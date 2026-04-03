@@ -6,20 +6,15 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include "protocol.h"
 
-// Struktura danych gracza (musi być identyczna w Pythonie!)
-struct PlayerData {
-    int id;
-    float x;
-    float y;
-};
 
 void *connection_handler(void *socket_desc) {
     int sock = *(int *)socket_desc;
     free(socket_desc); // Zwalniamy pamięć zaalokowaną w main
     
     int read_size;
-    struct PlayerData p_data;
+    struct PlayerData p_data; //tak dodaje się instancje pliku protocol.h
     
     printf("Wątek obsługujący gracza wystartował.\n");
 
@@ -47,7 +42,7 @@ void *connection_handler(void *socket_desc) {
 int main(int argc, char *argv[]) {
     int listenfd = 0;
     struct sockaddr_in serv_addr;
-
+    
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     
     // Pozwala na szybkie ponowne użycie portu po restarcie
@@ -66,7 +61,7 @@ int main(int argc, char *argv[]) {
 
     listen(listenfd, 10);
     printf("Serwer gry nasłuchuje na porcie 5000...\n");
-
+    
     while (1) {
         int *connfd = malloc(sizeof(int)); // Alokujemy pamięć dla deskryptora (bezpieczne dla wątków)
         *connfd = accept(listenfd, (struct sockaddr *)NULL, NULL);
