@@ -102,37 +102,26 @@ void *connection_handler(void *socket_desc) {
     // 2. PĘTLA GŁÓWNA KOMUNIKACJI
     while ((read_size = recv(sock, &packet, sizeof(struct GamePacket), 0)) > 0) {
         
-        // --- AKTUALIZACJA POZYCJI/STATYSTYK ---
         if (packet.category == PACKET_ENTITY_UPDATE) {
             pthread_mutex_lock(&world_mutex);
             
-            // Jeśli to pierwsza paczka od gracza, zapamiętaj jego typ
+            // Kluczowa zmiana: Jeśli serwer ma 0, a klient przysłał coś innego (np. 2)
             if (clients[my_index].entity_type == 0 && packet.entity_type != 0) {
                 clients[my_index].entity_type = packet.entity_type;
-                printf("[Serwer] Gracz ID %d wybrał typ: %d\n", clients[my_index].player_id, packet.entity_type);
-            }
-            
-            // Anty-cheat: wymuszamy ID przypisane przez serwer i typ zapamiętany na serwerze
-            int real_id = clients[my_index].player_id;
-            int real_type = clients[my_index].entity_type;
-            
-            if (real_type == MSG_MAGE) {
-                packet.entity_type = MSG_MAGE;
-                packet.data.mage.base.id = real_id;
-            }
-            else if (real_type == MSG_WARRIOR) {
-                packet.entity_type = MSG_WARRIOR;
-                packet.data.warrior.base.id = real_id;
-            }
-            else {
-                packet.entity_type = MSG_PLAYER;
-                packet.data.player.id = real_id;
+                printf("[Serwer] Gracz ID %d ZAAKCEPTOWAŁ typ: %d\n", clients[my_index].player_id, packet.entity_type);
             }
 
-            all_players[my_index] = packet; // Zapisz stan na serwerze
+            // Wymuszamy ID i TYP z bazy serwera
+            packet.data.player.id = clients[my_index].player_id;
+            packet.entity_type = clients[my_index].entity_type; // To nadpisze 0 na 2
+
+            // Zapisujemy pełny stan (razem z nowym typem!) do tablicy wszystkich graczy
+            all_players[my_index] = packet; 
+            
             pthread_mutex_unlock(&world_mutex);
 
-            broadcast_packet(&packet, sock); // Powiadom innych o ruchu
+            // Rozsyłamy poprawiony pakiet (z typem 2) do wszystkich
+            broadcast_packet(&packet, sock); 
         }
 
         // --- OBSŁUGA AKCJI (np. Atak) ---
