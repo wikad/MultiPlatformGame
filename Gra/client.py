@@ -51,13 +51,28 @@ class GameClient:
             except: break
 
     def send_action(self, category, e_type, p_id, x, y, s, hp, v1, v2):
-        """Pomocnicza metoda do pakowania i wrzucania do outbox."""
-        # Jeśli to pierwsza paczka i mamy wybraną klasę, upewnij się że wysyłamy prawidłowy e_type
-        if not self.class_sent and self.selected_class is not None:
-            e_type = self.selected_class
+        # Logika wyboru klasy
+        if self.selected_class is not None:
+            # Zawsze używaj wybranej klasy, jeśli została ustawiona
+            current_entity_type = self.selected_class
+        else:
+            current_entity_type = e_type
+
+        # Debugowanie - sprawdź co faktycznie leci do struct.pack
+        if not self.class_sent:
+            print(f"[CLIENT] Wysyłam pierwszy pakiet z typem: {current_entity_type}")
             self.class_sent = True
-            print(f"[HANDSHAKE] Wysyłam typ klasy: {e_type}")
-        
-        packet = struct.pack(self.GAME_PACKET_FORMAT, category, e_type, p_id, 
-                             float(x), float(y), s, hp, v1, v2)
+
+        # Pakowanie zgodnie z formatem: <iiiffiiii
+        # i (category), i (entity_type), i (id), f (x), f (y), i (size), i (hp), i (v1), i (v2)
+        packet = struct.pack(self.GAME_PACKET_FORMAT, 
+                             category, 
+                             current_entity_type, 
+                             p_id, 
+                             float(x), 
+                             float(y), 
+                             int(s), 
+                             int(hp), 
+                             int(v1), 
+                             int(v2))
         self.outbox.put(packet)
