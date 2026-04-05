@@ -6,8 +6,8 @@ import queue
 
 class GameClient:
     # Format: category (i) | entity_type (i) | id (i) | x (f) | y (f) | size (i) | hp (i) | v1 (i) | v2 (i)
-    # Łącznie: 36 bajtów (9 int/float po 4 bajty)
-    GAME_PACKET_FORMAT = "<iiiiffiii"
+    # Łącznie: 36 bajtów (3 int + 2 float + 4 int = 9 elementów)
+    GAME_PACKET_FORMAT = "<iiiffiii"
     PACKET_SIZE = struct.calcsize(GAME_PACKET_FORMAT)
 
     def __init__(self, host='127.0.0.1', port=5000):
