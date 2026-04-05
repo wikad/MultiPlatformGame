@@ -41,7 +41,7 @@ class GameEngine:
         while not self.client.inbox.empty():
             try:
                 packet = self.client.inbox.get_nowait()
-                category, e_type, p_id, x, y, size, hp, v1, v2 = packet
+                category, e_type, p_id, x, y, size, hp, v1 = packet
                 print(e_type)
                 # Jeśli to pierwsza paczka jaką dostaliśmy, przypiszmy sobie nasze ID
                 if self.client.my_id is None:
@@ -49,19 +49,19 @@ class GameEngine:
                     print(f"Moje ID to: {p_id}")
 
                 if category == 0:  # PACKET_ENTITY_UPDATE
-                    self._handle_entity_update(e_type, p_id, x, y, size, hp, v1, v2)
+                    self._handle_entity_update(e_type, p_id, x, y, size, hp, v1)
                 
                 # Po przetworzeniu oznaczamy zadanie jako wykonane
                 self.client.inbox.task_done()
             except queue.Empty:
                 break
-    def _handle_entity_update(self, e_type, p_id, x, y, size, hp, v1, v2):
+    def _handle_entity_update(self, e_type, p_id, x, y, size, hp, v1):
         """Decyduje czy stworzyć nowy obiekt, czy zaktualizować istniejący."""
         # Tworzymy nowy obiekt z danymi z serwera (bez aktualizowania self.entities)
         if e_type == MSG_MAGE:
-            new_obj = Mage(p_id, x, y, size, hp, v1, v2, entity_type=MSG_MAGE)
+            new_obj = Mage(p_id, x, y, size, hp, v1, 0, entity_type=MSG_MAGE)
         elif e_type == MSG_WARRIOR:
-            new_obj = Warrior(p_id, x, y, size, hp, v1, v2, entity_type=MSG_WARRIOR)
+            new_obj = Warrior(p_id, x, y, size, hp, v1, 0, entity_type=MSG_WARRIOR)
         else:
             new_obj = Player(p_id, x, y, size, hp, entity_type=e_type)
         
@@ -112,8 +112,7 @@ class GameEngine:
             me.id, 
             me.x, me.y, 
             me.size, me.hp, 
-            getattr(me, 'mana', 0), # v1
-            getattr(me, 'spell_power', 0) # v2
+            getattr(me, 'mana', 0) # v1
         )
 
     def render(self):
@@ -128,7 +127,7 @@ class GameEngine:
             self.client.my_id, 
             float(target_id), # x -> target_id (zgodnie z Twoją unią w C)
             0.0,            # y -> action_id
-            0, 0, 0, 0      # reszta zerowana
+            0, 0, 0         # reszta zerowana
         )
 
 if __name__ == "__main__":

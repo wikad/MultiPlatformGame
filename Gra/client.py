@@ -5,9 +5,9 @@ import threading
 import queue
 
 class GameClient:
-    # Format: category (i) | entity_type (i) | id (i) | x (f) | y (f) | size (i) | hp (i) | v1 (i) | v2 (i)
-    # Łącznie: 36 bajtów (3 int + 2 float + 4 int = 9 elementów)
-    GAME_PACKET_FORMAT = "<iiiffiii"
+    # Format: category (i) | entity_type (i) | id (i) | x (f) | y (f) | size (i) | hp (i) | v1 (i)
+    # Łącznie: 32 bajtów (3 int + 2 float + 3 int = 8 elementów)
+    GAME_PACKET_FORMAT = "<iiiffii"
     PACKET_SIZE = struct.calcsize(GAME_PACKET_FORMAT)
 
     def __init__(self, host='127.0.0.1', port=5000):
@@ -60,7 +60,7 @@ class GameClient:
                 self.sock.sendall(packet)
             except: break
 
-    def send_action(self, category, e_type, p_id, x, y, s, hp, v1, v2):
+    def send_action(self, category, e_type, p_id, x, y, s, hp, v1):
         """Pomocnicza metoda do pakowania i wrzucania do outbox."""
         # Jeśli to pierwsza paczka i mamy wybraną klasę, upewnij się że wysyłamy prawidłowy e_type
         if not self.class_sent and self.selected_class is not None:
@@ -69,5 +69,5 @@ class GameClient:
             print(f"[HANDSHAKE] Wysyłam typ klasy: {e_type}")
         
         packet = struct.pack(self.GAME_PACKET_FORMAT, category, e_type, p_id, 
-                             float(x), float(y), s, hp, v1, v2)
+                             float(x), float(y), s, hp, v1)
         self.outbox.put(packet)
