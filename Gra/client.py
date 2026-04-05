@@ -19,7 +19,9 @@ class GameClient:
         self.outbox = queue.Queue() # Dane z gry do serwera
         
         self.my_id = None
+        self.selected_class = None  # Wybrana klasa: 0=Player, 1=Mage, 2=Warrior
         self.running = False
+        self.class_sent = False  # Flaga czy wysłaliśmy typ klasy
 
     def start(self):
         self.sock.connect((self.host, self.port))
@@ -50,6 +52,12 @@ class GameClient:
 
     def send_action(self, category, e_type, p_id, x, y, s, hp, v1, v2):
         """Pomocnicza metoda do pakowania i wrzucania do outbox."""
+        # Jeśli to pierwsza paczka i mamy wybraną klasę, upewnij się że wysyłamy prawidłowy e_type
+        if not self.class_sent and self.selected_class is not None:
+            e_type = self.selected_class
+            self.class_sent = True
+            print(f"[HANDSHAKE] Wysyłam typ klasy: {e_type}")
+        
         packet = struct.pack(self.GAME_PACKET_FORMAT, category, e_type, p_id, 
                              float(x), float(y), s, hp, v1, v2)
         self.outbox.put(packet)

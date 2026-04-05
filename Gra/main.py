@@ -13,6 +13,15 @@ class GameEngine:
         self.gra = GAME(self.entities)
         self.frame_updates = {}  # Przechowuj updaty z tego frame'a
     def start(self):
+        # Pokaż menu wyboru klasy
+        selected_class = self.gra.show_class_selection_menu()
+        if selected_class is None:
+            print("Gracz anulował grę")
+            self.is_running = False
+            return
+        
+        print(f"Wybrana klasa: {selected_class}")
+        self.client.selected_class = selected_class
         self.client.start()
         # Pętla gry
         try:
@@ -49,11 +58,11 @@ class GameEngine:
         """Decyduje czy stworzyć nowy obiekt, czy zaktualizować istniejący."""
         # Tworzymy nowy obiekt z danymi z serwera (bez aktualizowania self.entities)
         if e_type == MSG_MAGE:
-            new_obj = Mage(p_id, x, y, size, hp, v1, v2)
+            new_obj = Mage(p_id, x, y, size, hp, v1, v2, entity_type=MSG_MAGE)
         elif e_type == MSG_WARRIOR:
-            new_obj = Warrior(p_id, x, y, size, hp, v1, v2)
+            new_obj = Warrior(p_id, x, y, size, hp, v1, v2, entity_type=MSG_WARRIOR)
         else:
-            new_obj = Player(p_id, x, y, size, hp)
+            new_obj = Player(p_id, x, y, size, hp, entity_type=e_type)
         
         # Przechowaj jako update do porównania
         self.frame_updates[p_id] = new_obj

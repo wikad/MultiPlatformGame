@@ -18,6 +18,7 @@ struct Client {
     int socket;
     int player_id;
     int active;
+    int entity_type;  // Typ gracza: 0=Player, 1=Mage, 2=Warrior
 };
 
 // --- STAN GRY (GLOBALNY) ---
@@ -62,6 +63,7 @@ void *connection_handler(void *socket_desc) {
             clients[i].socket = sock;
             clients[i].active = 1;
             clients[i].player_id = i + 1;
+            clients[i].entity_type = 0;  // Brak typu dopóki gracz nie wyśle swojej klasy
             my_index = i;
             total_players++;
             
@@ -79,7 +81,12 @@ void *connection_handler(void *socket_desc) {
             // B. Wyślij nowemu graczowi pozycje pozostałych graczy
             for (int j = 0; j < MAX_PLAYERS; j++) {
                 if (clients[j].active && j != my_index) {
-                    send(sock, &all_players[j], sizeof(struct GamePacket), 0);
+                    // Upewnij się że wysyłamy prawidłowy entity_type z clients
+                    struct GamePacket sync_packet = all_players[j];
+                    if (clients[j].entity_type > 0) {
+                        sync_packet.entity_type = clients[j].entity_type;
+                    }
+                    send(sock, &sync_packet, sizeof(struct GamePacket), 0);
                 }
             }
             break;
@@ -98,11 +105,29 @@ void *connection_handler(void *socket_desc) {
         // --- AKTUALIZACJA POZYCJI/STATYSTYK ---
         if (packet.category == PACKET_ENTITY_UPDATE) {
             pthread_mutex_lock(&world_mutex);
-            // Anty-cheat: wymuszamy ID przypisane przez serwer
+            
+            // Jeśli to pierwsza paczka od gracza, zapamiętaj jego typ
+            if (clients[my_index].entity_type == 0 && packet.entity_type != 0) {
+                clients[my_index].entity_type = packet.entity_type;
+                printf("[Serwer] Gracz ID %d wybrał typ: %d\n", clients[my_index].player_id, packet.entity_type);
+            }
+            
+            // Anty-cheat: wymuszamy ID przypisane przez serwer i typ zapamiętany na serwerze
             int real_id = clients[my_index].player_id;
-            if (packet.entity_type == MSG_MAGE) packet.data.mage.base.id = real_id;
-            else if (packet.entity_type == MSG_WARRIOR) packet.data.warrior.base.id = real_id;
-            else packet.data.player.id = real_id;
+            int real_type = clients[my_index].entity_type;
+            
+            if (real_type == MSG_MAGE) {
+                packet.entity_type = MSG_MAGE;
+                packet.data.mage.base.id = real_id;
+            }
+            else if (real_type == MSG_WARRIOR) {
+                packet.entity_type = MSG_WARRIOR;
+                packet.data.warrior.base.id = real_id;
+            }
+            else {
+                packet.entity_type = MSG_PLAYER;
+                packet.data.player.id = real_id;
+            }
 
             all_players[my_index] = packet; // Zapisz stan na serwerze
             pthread_mutex_unlock(&world_mutex);
