@@ -1,1 +1,6 @@
 Gra/venv
+__pycache__/
+/venv
+/env
+/.env
+/.venv

@@ -3,13 +3,15 @@ from client import GameClient
 from Obj.Player import Mage, Warrior, Player, MSG_MAGE, MSG_WARRIOR, MSG_TOWER
 from Obj.Map import Map, MapObject # Zakładając, że Tower też tam może być
 import queue
+from Game import GAME
 class GameEngine:
     def __init__(self):
         self.client = GameClient()
         self.entities = {}  # Główna "tablica" obiektów: {id: obiekt}
         self.game_map = None
         self.is_running = True
-
+        self.gra = GAME(self.entities)
+        self.frame_updates = {}  # Przechowuj updaty z tego frame'a
     def start(self):
         self.client.start()
         # Pętla gry
@@ -18,12 +20,14 @@ class GameEngine:
                 self.update_network()
                 self.update_game_logic()
                 self.render()
-                time.sleep(0.016) # ~60 FPS
+                # time.sleep(0.016) # ~60 FPS
+                time.sleep(0.064) # ~60 FPS
         except KeyboardInterrupt:
             self.client.running = False
 
     def update_network(self):
         """Pobieramy wszystko co przyszło z serwera od ostatniej klatki."""
+        self.frame_updates = {}  # Resetuj updaty z tego frame'a
         while not self.client.inbox.empty():
             try:
                 packet = self.client.inbox.get_nowait()
@@ -43,24 +47,21 @@ class GameEngine:
                 break
     def _handle_entity_update(self, e_type, p_id, x, y, size, hp, v1, v2):
         """Decyduje czy stworzyć nowy obiekt, czy zaktualizować istniejący."""
-        if p_id not in self.entities:
-            # TWORZENIE (Fabryka)
-            if e_type == MSG_MAGE:
-                self.entities[p_id] = Mage(p_id, x, y, size, hp, v1, v2)
-            elif e_type == MSG_WARRIOR:
-                self.entities[p_id] = Warrior(p_id, x, y, size, hp, v1, v2)
-            # Tutaj możesz dodać Tower lub inne typy
-            else:
-                self.entities[p_id] = Player(p_id, x, y, size, hp)
-            print(f"Nowy obiekt w grze! ID: {p_id}, Typ: {e_type}")
+        # Tworzymy nowy obiekt z danymi z serwera (bez aktualizowania self.entities)
+        if e_type == MSG_MAGE:
+            new_obj = Mage(p_id, x, y, size, hp, v1, v2)
+        elif e_type == MSG_WARRIOR:
+            new_obj = Warrior(p_id, x, y, size, hp, v1, v2)
         else:
-            # AKTUALIZACJA
-            obj = self.entities[p_id]
-            # Używamy metod update, które napisałeś wcześniej
-            if isinstance(obj, (Mage, Warrior)):
-                obj.update_stats(x, y, hp, v1, v2)
-            else:
-                obj.update_base(x, y, hp)
+            new_obj = Player(p_id, x, y, size, hp)
+        
+        # Przechowaj jako update do porównania
+        self.frame_updates[p_id] = new_obj
+        
+        # Jeśli to nowa entity - dodaj do self.entities
+        if p_id not in self.entities:
+            self.entities[p_id] = new_obj
+            print(f"Nowy obiekt w grze! ID: {p_id}, Typ: {e_type}")
 
     def send_action_to_server(self, category, e_type, p_id, x, y, size, hp, v1, v2):
         """Proces pakowania danych do wysyłki."""
@@ -74,17 +75,27 @@ class GameEngine:
         # 1. Sprawdź czy mamy już przypisane ID przez serwer
         if self.client.my_id is None:
             return
-        #TODO sparwić żeby nie wysyłało bez żadnej akcji od gracza
-        # 2. Pobierz obiekt reprezentujący CIEBIE (lokalnego gracza)
+        
+        # 2. Obsługuj eventy Pygame
+        if not self.gra.handle_events():
+            self.is_running = False
+            return
+        
+        # 3. Porównaj updaty z serwera ze stanem lokalnym
+        if self.frame_updates:
+            self.gra.update(self.frame_updates)
+            # Aktualizuj self.entities nowymi danymi z serwera
+            self.entities.update(self.frame_updates)
+        
+        # 4. Pobierz gracza
         me = self.entities.get(self.client.my_id)
         if not me:
             return
-
-        # 3. PRZYKŁAD: Poruszanie (np. jeśli używasz jakiejś biblioteki do klawiszy)
-        # Tutaj zmieniasz me.x i me.y na podstawie wejścia od gracza
         
-        # 4. Wysyłanie aktualizacji do serwera (Zpakowywanie)
-        # Używamy metody z client.py, która wrzuci to do outbox
+        # 5. Obsługuj input gracza
+        me = self.gra.on_key_event(me)
+
+        # 6. Wysyłanie aktualizacji do serwera
         self.client.send_action(
             0,              # category: PACKET_ENTITY_UPDATE
             1,              # e_type: MSG_MAGE (przykładowo)
@@ -96,13 +107,8 @@ class GameEngine:
         )
 
     def render(self):
-        # Tutaj rysujesz. Na razie tylko tekstowo dla testu:
-        if self.entities:
-            for eid, obj in self.entities.items():
-                # Sprytne wypisywanie stanu
-                status = f"ID:{eid} Pos:({obj.x},{obj.y}) HP:{obj.hp}"
-                if isinstance(obj, Mage): status += f" Mana:{obj.mana}"
-                print(status)
+        # Renderuj okno Pygame
+        self.gra.render()
 
     def perform_attack(self, target_id):
         # Wysyłamy pakiet typu ACTION
