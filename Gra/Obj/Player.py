@@ -27,7 +27,9 @@ class Mage(Player):
         self.update_base(x, y, hp)
         self.mana = mana
         self.spell_power = spell_power
-
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
+        
 class Warrior(Player):
     def __init__(self, id, x, y, size, hp, shield, strength):
         super().__init__(id, x, y, size, hp)

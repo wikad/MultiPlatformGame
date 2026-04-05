@@ -7,10 +7,18 @@ class GAME:
         self.entities = entieties  # Słownik przechowujący wszystkie byty w grze
         pygame.init()
         # Set up the game window
-        self.screen = pygame.display.set_mode((400, 300))
+        self.screen = pygame.display.set_mode((1000, 800))
         pygame.display.set_caption("Hello Pygame")
         self.clock = pygame.time.Clock()
 
+         # Załaduj obrazy raz
+        try:
+            self.player_img = pygame.image.load("assets/golem.png").convert()
+            self.mage_img = pygame.image.load("assets/player.png").convert()
+        except:
+            self.player_img = None
+            self.mage_img = None
+            print("Błąd: nie znaleziono jednego z obrazów")
 
     def update(self, updates):
         # 1. Odbierz aktualizacje od serwera
@@ -73,9 +81,22 @@ class GAME:
             print(f"Ruch gracza: {me.x}, {me.y}")
         return me
     
+    def render_players(self):
+        print(f"DEBUG: entities count = {len(self.entities)}")  # Sprawdzenie czy są gracze
+        for obj in self.entities.values():
+            size = obj.size if obj.size > 0 else 64  # Domyślny rozmiar jeśli size = 0
+            print(f"DEBUG: Renderuję {type(obj).__name__} na {obj.x}, {obj.y}, size={size}")
+            if isinstance(obj, Mage):
+                if self.player_img:
+                    self.screen.blit(self.player_img, (int(obj.x), int(obj.y)))
+            else:
+                if self.player_img:
+                    self.screen.blit(self.mage_img, (int(obj.x), int(obj.y)))
+
     def render(self):
         """Renderuj okno"""
         self.screen.fill((0, 0, 0))
         # TODO: Tutaj rysujesz obiekty
+        self.render_players()
         pygame.display.flip()
         self.clock.tick(60)  # 60 FPS
