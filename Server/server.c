@@ -70,7 +70,8 @@ void *connection_handler(void *socket_desc) {
             // Inicjalizacja pustego profilu gracza
             memset(&all_players[i], 0, sizeof(struct GamePacket));
             all_players[i].category = PACKET_ENTITY_UPDATE;
-            all_players[i].data.player.id = clients[i].player_id;
+            all_players[i].entity_type = MSG_PLAYER;
+            all_players[i].id = clients[i].player_id;
             
             printf("[Serwer] Gracz ID %d dołączył (slot %d).\n", clients[i].player_id, i);
             
@@ -116,18 +117,8 @@ void *connection_handler(void *socket_desc) {
             int real_id = clients[my_index].player_id;
             int real_type = clients[my_index].entity_type;
             
-            if (real_type == MSG_MAGE) {
-                packet.entity_type = MSG_MAGE;
-                packet.data.mage.base.id = real_id;
-            }
-            else if (real_type == MSG_WARRIOR) {
-                packet.entity_type = MSG_WARRIOR;
-                packet.data.warrior.base.id = real_id;
-            }
-            else {
-                packet.entity_type = MSG_PLAYER;
-                packet.data.player.id = real_id;
-            }
+            packet.id = real_id;  // Wymuszaj prawidłowe ID
+            packet.entity_type = real_type;  // Wymuszaj prawidłowy typ
 
             all_players[my_index] = packet; // Zapisz stan na serwerze
             pthread_mutex_unlock(&world_mutex);
@@ -137,18 +128,29 @@ void *connection_handler(void *socket_desc) {
 
         // --- OBSŁUGA AKCJI (np. Atak) ---
         else if (packet.category == PACKET_ACTION) {
-            struct ActionData *act = &packet.data.action;
-            if (act->action_id == ACTION_HIT_TOWER) {
+            // W nowym formacie: id = actor_id, x = target_id, y = action_id, size = value
+            int actor_id = packet.id;
+            int target_id = (int)packet.x;
+            int action_id = (int)packet.y;
+            int value = packet.size;
+            
+            if (action_id == ACTION_HIT_TOWER) {
                 pthread_mutex_lock(&tower_mutex);
                 for (int i = 0; i < tower_count; i++) {
-                    if (game_towers[i].base.id == act->target_id) {
-                        game_towers[i].base.hp -= act->value;
+                    if (game_towers[i].base.id == target_id) {
+                        game_towers[i].base.hp -= value;
                         
                         // Przygotuj pakiet rozgłoszeniowy z nowym stanem wieży
                         struct GamePacket t_packet;
                         t_packet.category = PACKET_ENTITY_UPDATE;
                         t_packet.entity_type = MSG_TOWER;
-                        t_packet.data.tower = game_towers[i];
+                        t_packet.id = game_towers[i].base.id;
+                        t_packet.x = game_towers[i].base.x;
+                        t_packet.y = game_towers[i].base.y;
+                        t_packet.size = game_towers[i].base.size;
+                        t_packet.hp = game_towers[i].base.hp;
+                        t_packet.v1 = game_towers[i].range;
+                        t_packet.v2 = game_towers[i].damage;
 
                         broadcast_packet(&t_packet, 0); // Wysyłamy do wszystkich (w tym nadawcy)
                         break;

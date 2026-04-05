@@ -58,18 +58,19 @@ struct ActionData {
 };
 
 // --- GŁÓWNA PACZKA (KOPERTA) ---
+// Format: category (int) | entity_type (int) | id (int) | x (float) | y (float) | size (int) | hp (int) | v1 (int) | v2 (int)
+// Całkowity rozmiar: 36 bajtów (stały dla każdego pakietu)
 
 struct GamePacket {
-    PacketCategory category; // 1. Najpierw patrzymy co to za kategoria
-    EntityType entity_type;  // 2. Jeśli to Entity, to jaki typ?
-    
-    union {
-        struct Player player;
-        struct Mage mage;
-        struct Warrior warrior;
-        struct Tower tower;
-        struct ActionData action; // Dodaliśmy akcje do unii!
-    } data;
+    int category;        // PACKET_ENTITY_UPDATE, PACKET_ACTION, itp.
+    int entity_type;     // MSG_PLAYER, MSG_MAGE, MSG_WARRIOR, MSG_TOWER
+    int id;              // ID gracza/entity
+    float x;             // Pozycja X
+    float y;             // Pozycja Y
+    int size;            // Rozmiar entity
+    int hp;              // Punkty zdrowia
+    int v1;              // v1: mana (dla Mage), shield_durability (dla Warrior), range (dla Tower)
+    int v2;              // v2: spell_power (dla Mage), strength (dla Warrior), damage (dla Tower)
 };
 
 #pragma pack(pop)

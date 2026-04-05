@@ -29,6 +29,20 @@ class GAME:
             self.warrior_img = None
             print("Błąd: nie znaleziono jednego z obrazów")
 
+    def debug_entity_type(self):
+        from Obj.Player import MSG_PLAYER, MSG_MAGE, MSG_WARRIOR, MSG_TOWER
+
+        type_names = {
+            MSG_PLAYER: "Player",
+            MSG_MAGE: "Mage",
+            MSG_WARRIOR: "Warrior",
+            MSG_TOWER: "Tower"
+        }
+
+        for eid, entity in self.entities.items():
+            type_name = type_names.get(entity.entity_type, "Unknown")
+            print(f"ID:{eid} type:{type_name} ({entity.entity_type})")
+
     def show_class_selection_menu(self):
         """Menu do wyboru klasy przed grą. Zwraca wybraną klasę (0=Player, 1=Mage, 2=Warrior)"""
         selected = None
@@ -126,11 +140,11 @@ class GAME:
         return me
     
     def render_players(self):
-        print(f"DEBUG: entities count = {len(self.entities)}")  # Sprawdzenie czy są gracze
+        #print(f"DEBUG: entities count = {len(self.entities)}")  # Sprawdzenie czy są gracze
         for obj in self.entities.values():
             size = obj.size if obj.size > 0 else 64  # Domyślny rozmiar jeśli size = 0
-            print(f"DEBUG: Renderuję {type(obj).__name__} (entity_type={obj.entity_type}) na {obj.x}, {obj.y}, size={size}")
-            
+           # print(f"DEBUG: Renderuję {type(obj).__name__} (entity_type={obj.entity_type}) na {obj.x}, {obj.y}, size={size}")
+            self.debug_entity_type()  # Wyświetl typy wszystkich bytów dla debugowania
             # Wybierz obraz na podstawie entity_type
             if obj.entity_type == MSG_MAGE:
                 img = self.mage_img

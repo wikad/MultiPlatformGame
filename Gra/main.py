@@ -15,6 +15,7 @@ class GameEngine:
     def start(self):
         # Pokaż menu wyboru klasy
         selected_class = self.gra.show_class_selection_menu()
+        print(selected_class)
         if selected_class is None:
             print("Gracz anulował grę")
             self.is_running = False
@@ -41,7 +42,7 @@ class GameEngine:
             try:
                 packet = self.client.inbox.get_nowait()
                 category, e_type, p_id, x, y, size, hp, v1, v2 = packet
-
+                print(e_type)
                 # Jeśli to pierwsza paczka jaką dostaliśmy, przypiszmy sobie nasze ID
                 if self.client.my_id is None:
                     self.client.my_id = p_id

@@ -5,8 +5,9 @@ import threading
 import queue
 
 class GameClient:
-    # ... (formaty struct te same co u Ciebie) ...
-    GAME_PACKET_FORMAT = "<iiiffiiii"
+    # Format: category (i) | entity_type (i) | id (i) | x (f) | y (f) | size (i) | hp (i) | v1 (i) | v2 (i)
+    # Łącznie: 36 bajtów (9 int/float po 4 bajty)
+    GAME_PACKET_FORMAT = "<iiiiffiii"
     PACKET_SIZE = struct.calcsize(GAME_PACKET_FORMAT)
 
     def __init__(self, host='127.0.0.1', port=5000):
@@ -22,6 +23,15 @@ class GameClient:
         self.selected_class = None  # Wybrana klasa: 0=Player, 1=Mage, 2=Warrior
         self.running = False
         self.class_sent = False  # Flaga czy wysłaliśmy typ klasy
+        
+    @staticmethod
+    def get_format_for_entity_type(entity_type):
+        """Zwraca format struct dla danego typu entity."""
+        # category, e_type, id, x, y, size, hp, v1, v2
+        if entity_type == 0:  # MSG_PLAYER
+            return "<iiiifii"  # 2 int (cat, type) + 3 int (id, size, hp) + 2 float (x, y)
+        else:  # MSG_MAGE=1, MSG_WARRIOR=2, MSG_TOWER=3
+            return "<iiiiifiii"  # 2 int (cat, type) + 5 int (id, size, hp, v1, v2) + 2 float (x, y)
 
     def start(self):
         self.sock.connect((self.host, self.port))
