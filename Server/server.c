@@ -8,196 +8,154 @@
 #include <pthread.h>
 #include "protocol.h"
 
-// --- KONFIGURACJA ---
-#define MAX_PLAYERS 10
-#define MAX_TOWERS 5
-#define PORT 5000
+#define MAX_CLIENTS 10
 
-// --- STRUKTURY ZARZĄDZAJĄCE ---
-struct Client {
+// Globalna tablica klientów i licznik
+int client_sockets[MAX_CLIENTS];
+int client_count = 0;
+
+// Mutex - strażnik, który pilnuje, by tylko jeden wątek na raz modyfikował tablicę
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+// Struktura przechowująca dane o połączonym kliencie
+typedef struct {
     int socket;
-    int player_id;
-    int active;
-    int entity_type;  // Typ gracza: 0=Player, 1=Mage, 2=Warrior
-};
+    int id;
+    char username[32]; 
+    int type;
+} Client;
 
-// --- STAN GRY (GLOBALNY) ---
-struct Client clients[MAX_PLAYERS];
-struct GamePacket all_players[MAX_PLAYERS];
-struct Tower game_towers[MAX_TOWERS];
+int get_player_type(int socket) {
+    int player_type = 0;
+    ssize_t result = recv(socket, &player_type, sizeof(int), 0);
 
-int total_players = 0;
-int tower_count = 0;
-
-// --- MUTEXY (OCHRONA DANYCH) ---
-pthread_mutex_t world_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t tower_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-// --- FUNKCJE POMOCNICZE ---
-
-// Rozsyła pakiet do wszystkich aktywnych graczy (opcjonalnie pomijając nadawcę)
-void broadcast_packet(struct GamePacket *packet, int sender_sock) {
-    pthread_mutex_lock(&world_mutex);
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        if (clients[i].active && clients[i].socket != sender_sock) {
-            send(clients[i].socket, packet, sizeof(struct GamePacket), 0);
-        }
+    if (result <= 0) {
+        return -1; // Błąd połączenia lub zamknięty socket
     }
-    pthread_mutex_unlock(&world_mutex);
+
+    // Konwersja z formatu sieciowego (Big-Endian) na lokalny
+    return ntohl(player_type);
 }
 
-// --- OBSŁUGA POŁĄCZENIA ---
-
-void *connection_handler(void *socket_desc) {
-    int sock = *(int *)socket_desc;
-    free(socket_desc);
-    
-    struct GamePacket packet;
-    int read_size;
-    int my_index = -1;
-
-    // 1. REJESTRACJA I SYNCHRONIZACJA POCZĄTKOWA
-    pthread_mutex_lock(&world_mutex);
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        if (!clients[i].active) {
-            clients[i].socket = sock;
-            clients[i].active = 1;
-            clients[i].player_id = i + 1;
-            clients[i].entity_type = 1;  
-            my_index = i;
-            total_players++;
-            
-            // Inicjalizacja pustego profilu gracza
-            memset(&all_players[i], 0, sizeof(struct GamePacket));
-            all_players[i].category = PACKET_ENTITY_UPDATE;
-            all_players[i].data.player.id = clients[i].player_id;
-            
-            printf("[Serwer] Gracz ID %d dołączył (slot %d).\n", clients[i].player_id, i);
-            
-            // A. Wyślij nowemu graczowi jego własne ID
-            struct GamePacket id_msg = all_players[i];
-            send(sock, &id_msg, sizeof(struct GamePacket), 0);
-
-            // B. Wyślij nowemu graczowi pozycje pozostałych graczy
-            for (int j = 0; j < MAX_PLAYERS; j++) {
-                if (clients[j].active && j != my_index) {
-                    // Upewnij się że wysyłamy prawidłowy entity_type z clients
-                    struct GamePacket sync_packet = all_players[j];
-                    if (clients[j].entity_type > 0) {
-                        sync_packet.entity_type = clients[j].entity_type;
-                    }
-                    send(sock, &sync_packet, sizeof(struct GamePacket), 0);
-                }
+void remove_client(int socket) {
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < client_count; i++) {
+        if (client_sockets[i] == socket) {
+            // Przesuwamy pozostałe sockety, żeby załatać dziurę
+            for (int j = i; j < client_count - 1; j++) {
+                client_sockets[j] = client_sockets[j + 1];
             }
+            client_count--;
             break;
         }
     }
-    pthread_mutex_unlock(&world_mutex);
+    pthread_mutex_unlock(&clients_mutex);
+}
 
-    if (my_index == -1) {
-        printf("[Serwer] Brak wolnych slotów. Rozłączanie.\n");
-        close(sock); return NULL;
+void broadcast_packet(struct GamePacket *packet, int sender_socket) {
+    pthread_mutex_lock(&clients_mutex); // Blokujemy dostęp do tablicy na czas wysyłki
+
+    for (int i = 0; i < client_count; i++) {
+        // Nie wysyłamy paczki z powrotem do nadawcy (opcjonalne, zależnie od logiki gry)
+        if (client_sockets[i] != sender_socket) {
+            if (send(client_sockets[i], packet, sizeof(struct GamePacket), 0) < 0) {
+                perror("Błąd broadcastu");
+            }
+        }
     }
 
-    // 2. PĘTLA GŁÓWNA KOMUNIKACJI
-    while ((read_size = recv(sock, &packet, sizeof(struct GamePacket), 0)) > 0) {
+    pthread_mutex_unlock(&clients_mutex); // Zwalniamy blokadę
+}
+
+void *connection_handler(void *client_ptr) {
+    Client cli = *(Client *)client_ptr;
+    free(client_ptr);
+    
+    struct GamePacket packet;
+    ssize_t read_size;
+
+    // 1. Handshake
+    int type = get_player_type(cli.socket);
+    if (type < 0) {
+        printf("[Klient %d] Błąd inicjalizacji.\n", cli.id);
+        remove_client(cli.socket); // Usuwamy z tablicy, jeśli się rozłączył
+        close(cli.socket);
+        return NULL;
+    }
+    cli.type = type;
+
+    printf("[Klient %d] Wybrał typ: %d. Start broadcastu.\n", cli.id, type);
+
+    // 2. Główna pętla gry
+    while ((read_size = recv(cli.socket, &packet, sizeof(struct GamePacket), 0)) > 0) {
         
-        if (packet.category == PACKET_ENTITY_UPDATE) {
-            pthread_mutex_lock(&world_mutex);
-            
-            // Kluczowa zmiana: Jeśli serwer ma 0, a klient przysłał coś innego (np. 2)
-            if (clients[my_index].entity_type == 0 && packet.entity_type != 0) {
-                clients[my_index].entity_type = packet.entity_type;
-                printf("[Serwer] Gracz ID %d ZAAKCEPTOWAŁ typ: %d\n", clients[my_index].player_id, packet.entity_type);
-            }
+        // Zabezpieczenie: Serwer nadpisuje ID nadawcy, żeby nikt nie oszukiwał
+        packet.data.player.id = cli.id;
 
-            // Wymuszamy ID i TYP z bazy serwera
-            packet.data.player.id = clients[my_index].player_id;
-            packet.entity_type = clients[my_index].entity_type; // To nadpisze 0 na 2
-
-            // Zapisujemy pełny stan (razem z nowym typem!) do tablicy wszystkich graczy
-            all_players[my_index] = packet; 
-            
-            pthread_mutex_unlock(&world_mutex);
-
-            // Rozsyłamy poprawiony pakiet (z typem 2) do wszystkich
-            broadcast_packet(&packet, sock); 
-        }
-
-        // --- OBSŁUGA AKCJI (np. Atak) ---
-        else if (packet.category == PACKET_ACTION) {
-            struct ActionData *act = &packet.data.action;
-            if (act->action_id == ACTION_HIT_TOWER) {
-                pthread_mutex_lock(&tower_mutex);
-                for (int i = 0; i < tower_count; i++) {
-                    if (game_towers[i].base.id == act->target_id) {
-                        game_towers[i].base.hp -= act->value;
-                        
-                        // Przygotuj pakiet rozgłoszeniowy z nowym stanem wieży
-                        struct GamePacket t_packet;
-                        t_packet.category = PACKET_ENTITY_UPDATE;
-                        t_packet.entity_type = MSG_TOWER;
-                        t_packet.data.tower = game_towers[i];
-
-                        broadcast_packet(&t_packet, 0); // Wysyłamy do wszystkich (w tym nadawcy)
-                        break;
-                    }
-                }
-                pthread_mutex_unlock(&tower_mutex);
-            }
-        }
+        // ROZSYŁANIE: Teraz każdy inny gracz dostanie tę paczkę
+        broadcast_packet(&packet, cli.socket);
+        
+        // Opcjonalnie: echo do samego siebie, jeśli klient tego potrzebuje
+        // send(cli.socket, &packet, sizeof(struct GamePacket), 0);
     }
 
-    // 3. CZYSZCZENIE PO ROZŁĄCZENIU
-    pthread_mutex_lock(&world_mutex);
-    clients[my_index].active = 0;
-    total_players--;
-    printf("[Serwer] Gracz ID %d rozłączony.\n", clients[my_index].player_id);
-    pthread_mutex_unlock(&world_mutex);
-
-    close(sock);
+    // 3. Sprzątanie
+    printf("[Klient %d] Rozłączony.\n", cli.id);
+    remove_client(cli.socket);
+    close(cli.socket);
     return NULL;
 }
 
-// --- PROGRAM GŁÓWNY ---
+int main(int argc, char *argv[]) {
+    int listenfd;
+    struct sockaddr_in serv_addr;
+    int client_id_counter = 1; // Licznik do nadawania ID
 
-int main() {
-    // Inicjalizacja obiektów (Wieże)
-    game_towers[0].base.id = 100;
-    game_towers[0].base.x = 500;
-    game_towers[0].base.y = 500;
-    game_towers[0].base.hp = 1000;
-    tower_count = 1;
+    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_addr.sin_port = htons(5000); 
 
-    // Zerowanie slotów graczy
-    for(int i = 0; i < MAX_PLAYERS; i++) clients[i].active = 0;
+    bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    listen(listenfd, 10); 
 
-    // Konfiguracja Socketu
-    int listenfd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    printf("Serwer RPG z obsługą ID uruchomiony...\n");
 
-    struct sockaddr_in serv_addr = {
-        .sin_family = AF_INET,
-        .sin_addr.s_addr = htonl(INADDR_ANY),
-        .sin_port = htons(PORT)
-    };
-
-    if (bind(listenfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Bind failed"); return 1;
-    }
-
-    listen(listenfd, 10);
-    printf("[Serwer] Start: port %d. Czekam na graczy...\n", PORT);
-
-    while (1) {
-        int *connfd = malloc(sizeof(int));
-        *connfd = accept(listenfd, NULL, NULL);
+    for (;;) {
+        struct sockaddr_in client_addr;
+        socklen_t addr_len = sizeof(struct sockaddr_in);
         
-        pthread_t tid;
-        pthread_create(&tid, NULL, connection_handler, connfd);
-        pthread_detach(tid);
-    }
+        int connfd = accept(listenfd, (struct sockaddr*)&client_addr, &addr_len);
+        
+        if (connfd >= 0) {
+            
+            pthread_mutex_lock(&clients_mutex);
+            if (client_count < MAX_CLIENTS) {
+                client_sockets[client_count++] = connfd;
+                pthread_mutex_unlock(&clients_mutex);
+                
+                // Uruchom wątek...
+                // Alokujemy pamięć dla struktury Client
+                Client *new_client = malloc(sizeof(Client));
+                new_client->socket = connfd;
+                new_client->id = client_id_counter++; // Nadaj ID i zwiększ licznik
 
+                printf("Nowe połączenie: ID %d, IP: %s\n", 
+                    new_client->id, inet_ntoa(client_addr.sin_addr));
+
+                pthread_t thread_id;
+                pthread_create(&thread_id, NULL, connection_handler, (void *)new_client);
+                pthread_detach(thread_id);
+
+            } else {
+                printf("Serwer pełny!\n");
+                close(connfd);
+                pthread_mutex_unlock(&clients_mutex);
+            }
+        }
+    }
     return 0;
 }
