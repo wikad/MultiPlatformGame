@@ -63,7 +63,7 @@ void *connection_handler(void *socket_desc) {
             clients[i].socket = sock;
             clients[i].active = 1;
             clients[i].player_id = i + 1;
-            clients[i].entity_type = 0;  // Brak typu dopóki gracz nie wyśle swojej klasy
+            clients[i].entity_type = 1;  
             my_index = i;
             total_players++;
             

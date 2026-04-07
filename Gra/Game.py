@@ -3,7 +3,7 @@ import pygame
 
 
 class GAME:
-    def __init__(self, entieties):
+    def __init__(self, entieties, client):
         self.entities = entieties  # Słownik przechowujący wszystkie byty w grze
         pygame.init()
         # Set up the game window
@@ -12,17 +12,14 @@ class GAME:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         self.large_font = pygame.font.Font(None, 72)
+        self.client = client
 
          # Załaduj obrazy raz
         try:
-            self.player_img = pygame.image.load("assets/golem.png").convert()
+            self.player_img = pygame.image.load("assets/player.png").convert()
             self.mage_img = pygame.image.load("assets/player.png").convert()
-            # Załaduj obraz dla Warrior (jeśli istnieje, inaczej użyj mage_img)
-            try:
-                self.warrior_img = pygame.image.load("assets/warrior.png").convert()
-            except:
-                print("Uwaga: warrior.png nie znaleziono, użyję mage_img dla Warrior")
-                self.warrior_img = self.mage_img
+            self.warrior_img = pygame.image.load("assets/golem.png").convert()
+                
         except:
             self.player_img = None
             self.mage_img = None
@@ -64,36 +61,6 @@ class GAME:
         
         return selected
 
-    def update(self, updates):
-        # 1. Odbierz aktualizacje od serwera
-        # Aktualizujemy byty na podstawie danych z serwera
-        attrs_to_compare = ['x', 'y', 'hp', 'mana']  # Atrybuty do porównania
-    
-        for eid, obj in updates.items():
-            
-            if eid in self.entities:
-                old_obj = self.entities[eid]
-                changes = []
-                
-                for attr in attrs_to_compare:
-                    if hasattr(old_obj, attr) and hasattr(obj, attr):
-                        old_val = getattr(old_obj, attr)
-                        new_val = getattr(obj, attr)
-                        if old_val != new_val:
-                            changes.append(f"{attr}:{old_val}->{new_val}")
-                
-                if changes:
-                    print(f"ID:{eid} {', '.join(changes)}")
-            else:
-                print(f"ID:{eid} Nowa entity")
-            
-            self.entities[eid] = obj
-
-        # 2. Zaktualizuj stan gry (np. poruszanie się, kolizje, itp.)
-        
-
-        # 3. Renderuj grę (jeśli używasz biblioteki graficznej)        
-
     
     def game_exit(self ):
         pygame.quit()
@@ -125,12 +92,28 @@ class GAME:
             print(f"Ruch gracza: {me.x}, {me.y}")
         return me
     
+    def update_entieties_in_game(self, frame_updates):
+        for p_id, new_data in frame_updates.items():
+            if p_id in self.entities:
+                # AKTUALIZACJA (Chirurgia)
+                current_obj = self.entities[p_id]
+                print(f"Aktualizacja obiektu ID:{p_id} - Stary stan: ({current_obj.x}, {current_obj.y}, HP:{current_obj.hp}) -> Nowy stan: ({new_data.x}, {new_data.y}, HP:{new_data.hp})")
+                # Przepisujemy TYLKO pozycję i stan, NIE podmieniamy całego obiektu
+                current_obj.x = new_data.x
+                current_obj.y = new_data.y
+                current_obj.hp = new_data.hp
+                
+                # Jeśli to inny gracz i serwer przysłał konkretny typ klasy, to go zmieńmy
+                if p_id != self.client.my_id and new_data.entity_type != 0:
+                    current_obj.entity_type = new_data.entity_type
+            else:
+                # NOWY OBIEKT (Tylko jeśli go wcześniej nie było)
+                self.entities[p_id] = new_data
+
     def render_players(self):
-        print(f"DEBUG: entities count = {len(self.entities)}")  # Sprawdzenie czy są gracze
+        #print(f"DEBUG: Aktualne byty w grze: {[f'ID:{obj.id} Type:{obj.entity_type}' for obj in self.entities.values()]}")  # Sprawdzenie typów bytów
         for obj in self.entities.values():
-            size = obj.size if obj.size > 0 else 64  # Domyślny rozmiar jeśli size = 0
-            print(f"DEBUG: Renderuję {type(obj).__name__} (entity_type={obj.entity_type}) na {obj.x}, {obj.y}, size={size}")
-            
+            size = obj.size if obj.size > 0 else 64
             # Wybierz obraz na podstawie entity_type
             if obj.entity_type == MSG_MAGE:
                 img = self.mage_img
@@ -144,6 +127,7 @@ class GAME:
 
     def render(self):
         """Renderuj okno"""
+        print(f"obecne entities: {[f'ID:{obj.id} Type:{obj.entity_type}' for obj in self.entities.values()]}")  # Debug: jakie byty mamy do renderowania
         self.screen.fill((0, 0, 0))
         # TODO: Tutaj rysujesz obiekty
         self.render_players()

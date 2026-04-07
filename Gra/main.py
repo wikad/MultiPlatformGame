@@ -10,8 +10,9 @@ class GameEngine:
         self.entities = {}  # Główna "tablica" obiektów: {id: obiekt}
         self.game_map = None
         self.is_running = True
-        self.gra = GAME(self.entities)
+        self.gra = GAME(self.entities,self.client)
         self.frame_updates = {}  # Przechowuj updaty z tego frame'a
+
     def start(self):
         # Pokaż menu wyboru klasy
         selected_class = self.gra.show_class_selection_menu()
@@ -26,9 +27,10 @@ class GameEngine:
         # Pętla gry
         try:
             while self.is_running:
-                self.update_network()
-                self.update_game_logic()
-                self.render()
+                self.update_network() # 1
+                self.update_game_logic() # 2
+                self.render() # 
+
                 # time.sleep(0.016) # ~60 FPS
                 time.sleep(0.064) # ~60 FPS
         except KeyboardInterrupt:
@@ -49,7 +51,7 @@ class GameEngine:
 
                 if category == 0:  # PACKET_ENTITY_UPDATE
                     self._handle_entity_update(e_type, p_id, x, y, size, hp, v1, v2)
-                
+
                 # Po przetworzeniu oznaczamy zadanie jako wykonane
                 self.client.inbox.task_done()
             except queue.Empty:
@@ -66,11 +68,11 @@ class GameEngine:
         
         # Przechowaj jako update do porównania
         self.frame_updates[p_id] = new_obj
-        
         # Jeśli to nowa entity - dodaj do self.entities
         if p_id not in self.entities:
             self.entities[p_id] = new_obj
-            print(f"Nowy obiekt w grze! ID: {p_id}, Typ: {e_type}")
+        print(f"Nowy obiekt w grze! ID: {p_id}, Typ: {e_type}")
+        
 
     def send_action_to_server(self, category, e_type, p_id, x, y, size, hp, v1, v2):
         """Proces pakowania danych do wysyłki."""
@@ -92,9 +94,7 @@ class GameEngine:
         
         # 3. Porównaj updaty z serwera ze stanem lokalnym
         if self.frame_updates:
-            self.gra.update(self.frame_updates)
-            # Aktualizuj self.entities nowymi danymi z serwera
-            self.entities.update(self.frame_updates)
+            self.gra.update_entieties_in_game(self.frame_updates)
         
         # 4. Pobierz gracza
         me = self.entities.get(self.client.my_id)
@@ -107,7 +107,7 @@ class GameEngine:
         # 6. Wysyłanie aktualizacji do serwera
         self.client.send_action(
             0,              # category: PACKET_ENTITY_UPDATE
-            1,              # e_type: MSG_MAGE (przykładowo)
+            self.client.selected_class,              # e_type: MSG_MAGE (przykładowo)
             me.id, 
             me.x, me.y, 
             me.size, me.hp, 
@@ -123,7 +123,7 @@ class GameEngine:
         # Wysyłamy pakiet typu ACTION
         self.client.send_action(
             1,              # category: PACKET_ACTION
-            0,              # e_type: (nieistotne dla akcji)
+            self.client.selected_class,              # e_type: (nieistotne dla akcji)
             self.client.my_id, 
             float(target_id), # x -> target_id (zgodnie z Twoją unią w C)
             0.0,            # y -> action_id

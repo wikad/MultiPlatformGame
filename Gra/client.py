@@ -53,10 +53,10 @@ class GameClient:
     def send_action(self, category, e_type, p_id, x, y, s, hp, v1, v2):
         # Logika wyboru klasy
         if self.selected_class is not None:
-            # Zawsze używaj wybranej klasy, jeśli została ustawiona
             current_entity_type = self.selected_class
-        else:
-            current_entity_type = e_type
+
+        # else:
+        #     current_entity_type = e_type
 
         # Debugowanie - sprawdź co faktycznie leci do struct.pack
         if not self.class_sent:
