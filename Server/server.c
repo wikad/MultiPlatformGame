@@ -63,7 +63,7 @@ void *connection_handler(void *socket_desc) {
             clients[i].socket = sock;
             clients[i].active = 1;
             clients[i].player_id = i + 1;
-            clients[i].entity_type = 1;  
+            clients[i].entity_type = 0;  // typ ustala pierwszy pakiet klienta
             my_index = i;
             total_players++;
             
@@ -100,7 +100,8 @@ void *connection_handler(void *socket_desc) {
     }
 
     // 2. PĘTLA GŁÓWNA KOMUNIKACJI
-    while ((read_size = recv(sock, &packet, sizeof(struct GamePacket), 0)) > 0) {
+    // MSG_WAITALL: czekamy na cały pakiet (TCP może dzielić dane na kawałki)
+    while ((read_size = recv(sock, &packet, sizeof(struct GamePacket), MSG_WAITALL)) == sizeof(struct GamePacket)) {
         
         if (packet.category == PACKET_ENTITY_UPDATE) {
             pthread_mutex_lock(&world_mutex);
@@ -135,6 +136,7 @@ void *connection_handler(void *socket_desc) {
                         
                         // Przygotuj pakiet rozgłoszeniowy z nowym stanem wieży
                         struct GamePacket t_packet;
+                        memset(&t_packet, 0, sizeof(t_packet));
                         t_packet.category = PACKET_ENTITY_UPDATE;
                         t_packet.entity_type = MSG_TOWER;
                         t_packet.data.tower = game_towers[i];
@@ -193,6 +195,7 @@ int main() {
     while (1) {
         int *connfd = malloc(sizeof(int));
         *connfd = accept(listenfd, NULL, NULL);
+        if (*connfd < 0) { free(connfd); continue; }
         
         pthread_t tid;
         pthread_create(&tid, NULL, connection_handler, connfd);

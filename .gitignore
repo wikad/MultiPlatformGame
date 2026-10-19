@@ -1,6 +1,9 @@
-Gra/venv
+venv/
+.venv/
+env/
+.env
 __pycache__/
-/venv
-/env
-/.env
-/.venv
+*.py[cod]
+Server/game_server
+.vscode/
+.idea/

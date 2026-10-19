@@ -1,9 +1,8 @@
-import time
-from client import GameClient
-from Obj.Player import Mage, Warrior, Player, MSG_MAGE, MSG_WARRIOR, MSG_TOWER
-from Obj.Map import Map, MapObject # Zakładając, że Tower też tam może być
 import queue
+
+from client import GameClient
 from Game import GAME
+from Obj.Player import Mage, Warrior, Player, Tower, MSG_MAGE, MSG_WARRIOR, MSG_TOWER
 class GameEngine:
     def __init__(self):
         self.client = GameClient()
@@ -29,12 +28,12 @@ class GameEngine:
             while self.is_running:
                 self.update_network() # 1
                 self.update_game_logic() # 2
-                self.render() # 
-
-                # time.sleep(0.016) # ~60 FPS
-                time.sleep(0.064) # ~60 FPS
+                self.render() # 3 (zegar Pygame trzyma 60 FPS)
         except KeyboardInterrupt:
+            pass
+        finally:
             self.client.running = False
+            self.gra.game_exit()
 
     def update_network(self):
         """Pobieramy wszystko co przyszło z serwera od ostatniej klatki."""
@@ -63,6 +62,8 @@ class GameEngine:
             new_obj = Mage(p_id, x, y, size, hp, v1, v2, entity_type=MSG_MAGE)
         elif e_type == MSG_WARRIOR:
             new_obj = Warrior(p_id, x, y, size, hp, v1, v2, entity_type=MSG_WARRIOR)
+        elif e_type == MSG_TOWER:
+            new_obj = Tower(p_id, x, y, size, hp, v1, v2, entity_type=MSG_TOWER)
         else:
             new_obj = Player(p_id, x, y, size, hp, entity_type=e_type)
         
@@ -71,16 +72,7 @@ class GameEngine:
         # Jeśli to nowa entity - dodaj do self.entities
         if p_id not in self.entities:
             self.entities[p_id] = new_obj
-        print(f"Nowy obiekt w grze! ID: {p_id}, Typ: {e_type}")
-        
-
-    def send_action_to_server(self, category, e_type, p_id, x, y, size, hp, v1, v2):
-        """Proces pakowania danych do wysyłki."""
-        # LOG: Co pakujemy?
-        print(f"[PAKOWANIE] Wysyłam ruch/akcję ID:{p_id} na pozycję {x},{y}")
-        
-        # Wywołujemy metodę klienta, która zrobi struct.pack
-        self.client.send_action(x, y) 
+            print(f"Nowy obiekt w grze! ID: {p_id}, Typ: {e_type}")
 
     def update_game_logic(self):
         # 1. Sprawdź czy mamy już przypisane ID przez serwer
@@ -100,11 +92,16 @@ class GameEngine:
         me = self.entities.get(self.client.my_id)
         if not me:
             return
+        me.entity_type = self.client.selected_class  # własna klasa jest znana lokalnie
         
         # 5. Obsługuj input gracza
         me = self.gra.on_key_event(me)
 
-        # 6. Wysyłanie aktualizacji do serwera
+        # 6. Wysyłanie aktualizacji do serwera (tylko gdy coś się zmieniło)
+        state = (me.x, me.y, me.hp)
+        if state == getattr(self, "_last_sent", None):
+            return
+        self._last_sent = state
         self.client.send_action(
             0,              # category: PACKET_ENTITY_UPDATE
             self.client.selected_class,              # e_type: MSG_MAGE (przykładowo)
@@ -119,16 +116,6 @@ class GameEngine:
         # Renderuj okno Pygame
         self.gra.render()
 
-    def perform_attack(self, target_id):
-        # Wysyłamy pakiet typu ACTION
-        self.client.send_action(
-            1,              # category: PACKET_ACTION
-            self.client.selected_class,              # e_type: (nieistotne dla akcji)
-            self.client.my_id, 
-            float(target_id), # x -> target_id (zgodnie z Twoją unią w C)
-            0.0,            # y -> action_id
-            0, 0, 0, 0      # reszta zerowana
-        )
 
 if __name__ == "__main__":
     game = GameEngine()

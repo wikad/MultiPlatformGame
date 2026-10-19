@@ -5,10 +5,12 @@ FROM gcc:latest
 WORKDIR /app
 
 # Kopiujemy server.c i protocol.h do kontenera
-COPY server.c protocol.h .
+COPY server.c protocol.h ./
+
+EXPOSE 5000
 
 # Kompilujemy z flagą -pthread
-RUN gcc -o game_server server.c -lpthread
+RUN gcc -O2 -Wall -o game_server server.c -lpthread
 
 # Uruchamiamy serwer
 CMD ["./game_server"]
